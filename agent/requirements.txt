@@ -1,0 +1,4 @@
+psutil==6.1.0
+watchdog==6.0.0
+PyYAML==6.0.2
+requests==2.32.3
