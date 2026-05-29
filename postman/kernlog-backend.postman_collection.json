@@ -2,14 +2,16 @@
   "info": {
     "name": "Kernlog Backend API",
     "_postman_id": "a9cb0868-3c84-4c82-86a5-a5d510f33ac6",
-    "description": "Auth + organization + agent key APIs implemented till Phase 3.",
+    "description": "Auth + organization + agent key + agent registration APIs implemented till Phase 5.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:8000" },
     { "key": "accessToken", "value": "" },
     { "key": "refreshToken", "value": "" },
-    { "key": "agentKeyId", "value": "" }
+    { "key": "agentKeyId", "value": "" },
+    { "key": "agentKey", "value": "" },
+    { "key": "hostId", "value": "dev-host-01" }
   ],
   "item": [
     {
@@ -130,6 +132,26 @@
             "method": "DELETE",
             "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
             "url": "{{baseUrl}}/org/agent-keys/{{agentKeyId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Agent",
+      "item": [
+        {
+          "name": "POST /api/v1/agent/register",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "agent_key", "value": "{{agentKey}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"host_id\": \"{{hostId}}\",\n  \"label\": \"api-node-01\",\n  \"os\": \"linux\",\n  \"arch\": \"x86_64\",\n  \"agent_version\": \"0.1.0\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/agent/register"
           }
         }
       ]

@@ -211,7 +211,7 @@ Test cases:
 ## Phase 4 — Monitoring Agent Package
 > Deliver installable Python agent with metrics/log shipping and graceful runtime behavior.
 
-### TASK-013: Scaffold `kernlog-agent` package structure [AGENT] [M]
+### TASK-013: Scaffold `kernlog-agent` package structure [AGENT] [M] [COMPLETED]
 - Create `agent/kernlog_agent/` with `collectors/`, `producers/`, `config.py`, `main.py`.
 - Add packaging metadata (`pyproject.toml` or `setup.py`) for `pip install kernlog-agent`.
 - Expose CLI entrypoint: `kernlog-agent`.
@@ -221,7 +221,7 @@ Test cases:
 - `pip install -e agent/` installs package.
 - `kernlog-agent --help` prints CLI usage.
 
-### TASK-014: Build config loader for `/etc/kernlog/config.yaml` [AGENT] [M]
+### TASK-014: Build config loader for `/etc/kernlog/config.yaml` [AGENT] [M] [COMPLETED]
 - Parse fields: `agent_key`, Upstash QStash creds/url, `host_id`, `host_label`, `log_file_paths`, `collection_interval_seconds`.
 - Default `host_id` to hostname and interval to 15.
 - Validate required fields and readable log paths.
@@ -232,7 +232,7 @@ Test cases:
 - Minimal config uses defaults correctly.
 - Invalid YAML fails gracefully.
 
-### TASK-015: Implement agent registration client [AGENT] [M]
+### TASK-015: Implement agent registration client [AGENT] [M] [COMPLETED]
 - On startup call `POST /api/v1/agent/register`.
 - Send `agent_key` header and metadata body `{host_id,label,os,arch,agent_version}`.
 - Cache returned `tenant_id` and normalized `host_id` for message payloads.
@@ -243,7 +243,7 @@ Test cases:
 - Revoked/invalid key fails and prevents run loop.
 - Network timeout retries then exits after configured limit.
 
-### TASK-016: Implement system metrics collector (no Docker metrics) [AGENT] [M]
+### TASK-016: Implement system metrics collector (no Docker metrics) [AGENT] [M] [COMPLETED]
 - Collect CPU, memory, disk `/`, and network counters via `psutil`.
 - Build topic payloads with top-level `tenant_id` and `host_id`.
 - Emit to `metrics.system` every configured interval.
@@ -253,7 +253,7 @@ Test cases:
 - Collector emits expected metric names and numeric values.
 - Interval pacing remains stable across cycles.
 
-### TASK-017: Implement log tailer using `watchdog` [AGENT] [L]
+### TASK-017: Implement log tailer using `watchdog` [AGENT] [L] [COMPLETED]
 - Watch configured files and append new lines only.
 - Produce each new line to topic `logs.app` with file path and timestamp.
 - Include top-level `tenant_id` and `host_id` in each message.
@@ -263,7 +263,7 @@ Test cases:
 - Appended log line appears as single produced event.
 - File rotation continues ingestion without duplicate flood.
 
-### TASK-018: Implement Upstash QStash producer wrapper with retries [AGENT] [M]
+### TASK-018: Implement Upstash QStash producer wrapper with retries [AGENT] [M] [COMPLETED]
 - Use `QStash` REST-based producer client.
 - Configure from `UPSTASH_QSTASH_URL`, `UPSTASH_QSTASH_TOKEN`, `UPSTASH_QSTASH_CURRENT_SIGNING_KEY`.
 - Add exponential backoff for HTTP errors.
@@ -274,7 +274,7 @@ Test cases:
 - Simulated 5xx triggers retry behavior.
 - Exhausted retries surfaces non-zero exit path.
 
-### TASK-019: Add graceful shutdown and middleware snippet [AGENT] [M]
+### TASK-019: Add graceful shutdown and middleware snippet [AGENT] [M] [COMPLETED]
 - Handle SIGTERM/SIGINT in agent main loop.
 - Flush producer and close watchers/file descriptors before exit.
 - Add standalone `kernlog_middleware.py` for FastAPI apps to push API latency/status to `metrics.api`.
@@ -284,12 +284,22 @@ Test cases:
 - SIGTERM exits cleanly without corrupted state.
 - Middleware emits endpoint latency payloads with route and status code.
 
+### Phase 4 Implementation Approach (Completed on May 29, 2026)
+- Added a proper installable `kernlog-agent` package under `agent/kernlog_agent` with separated collectors/producers modules, package metadata (`setup.py`), and a CLI entrypoint (`kernlog-agent`).
+- Implemented strict YAML configuration loading with defaults (`host_id` from hostname, interval default 15), validation for required credentials/keys, and readable error handling via `AgentConfigError`.
+- Implemented startup registration client for `POST /api/v1/agent/register` with bounded exponential backoff, invalid-key fail-fast behavior, and normalized tenant/host context capture for subsequent payloads.
+- Implemented system metrics collection using `psutil` for CPU, memory, disk root, and network counters with a monotonic timestamp, published to `metrics.system`.
+- Implemented watchdog-based log tailing for append-only ingestion to `logs.app`, including rotation/truncation-safe offset reset behavior.
+- Added QStash producer wrapper with structured publish result metadata and retry behavior for transient/server errors.
+- Added graceful shutdown in the runtime loop (`SIGTERM`/`SIGINT`) to stop loops, close log observers, and close HTTP sessions cleanly.
+- Added standalone `agent/kernlog_middleware.py` and documented FastAPI integration snippet in `agent/README.md` for publishing API latency/status metrics to `metrics.api`.
+
 ---
 
 ## Phase 5 — Agent Registration Endpoint
 > Deliver backend registration endpoint secured by agent key auth and rate limits.
 
-### TASK-020: Implement `POST /api/v1/agent/register` with key auth [BACKEND] [M]
+### TASK-020: Implement `POST /api/v1/agent/register` with key auth [BACKEND] [M] [COMPLETED]
 - Validate `agent_key` header via hash->tenant resolver.
 - Upsert into `app.hosts` on `(tenant_id, host_id)` uniqueness.
 - Update host metadata (`label`, `os`, `arch`, `agent_version`, `last_seen_at`).
@@ -300,7 +310,7 @@ Test cases:
 - Re-registration updates metadata without duplicate row.
 - Invalid key returns 401.
 
-### TASK-021: Apply endpoint rate limiting (10 req/min per key) [BACKEND] [S]
+### TASK-021: Apply endpoint rate limiting (10 req/min per key) [BACKEND] [S] [COMPLETED]
 - Add limiter middleware (`slowapi` or equivalent).
 - Use raw `agent_key` hash as limiter identity.
 - Configure route-specific cap at `10/minute`.
@@ -309,6 +319,15 @@ Test cases:
 Test cases:
 - 11th request within minute gets 429.
 - Different keys are independently limited.
+
+### Phase 5 Implementation Approach (Completed on May 29, 2026)
+- Added a dedicated agent router with `POST /api/v1/agent/register` and included it in FastAPI app wiring.
+- Enforced `agent_key` header validation using existing hash-to-tenant key resolver, returning `401` for invalid/revoked keys.
+- Implemented host registration as tenant-scoped upsert on `(tenant_id, host_id)` with metadata refresh (`label`, `os`, `arch`, `agent_version`, `last_seen_at`) and response payload `{tenant_id, host_id, registered: true}`.
+- Updated `app.agent_keys.last_used_at` on successful registration.
+- Added route-specific in-memory rate limiter (`10/minute`) keyed by SHA-256 hash of raw `agent_key` and returned `429` with `Retry-After` header when exceeded.
+- Updated Postman collection and local environment with Agent registration request and variables (`agentKey`, `hostId`).
+- Comment: Phase 5 backend endpoint and Postman coverage are now in sync and ready for Phase 6 ingestion work.
 
 ---
 
