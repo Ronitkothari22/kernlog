@@ -6,6 +6,11 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
 
 REQUIRED_ENV_VARS = (
     "NEON_DATABASE_URL",

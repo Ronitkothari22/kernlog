@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI
 from app.config import load_settings
 from app.deps.auth import require_auth
 from app.routers.auth import router as auth_router
+from app.routers.org import router as org_router
 
 
 @asynccontextmanager
@@ -20,6 +21,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Kernlog Backend", lifespan=lifespan)
 app.include_router(auth_router)
+app.include_router(org_router)
 
 
 @app.get("/health")

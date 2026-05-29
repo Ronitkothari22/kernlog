@@ -139,7 +139,7 @@ Test cases:
 ## Phase 3 — Organization and Agent Key Management
 > Deliver tenant admin endpoints and secure agent key lifecycle.
 
-### TASK-010: Implement org profile endpoint `GET /org` [BACKEND] [S]
+### TASK-010: Implement org profile endpoint `GET /org` [BACKEND] [S] [COMPLETED]
 - Add `GET /org` protected route.
 - Query `app.organizations` by `tenant_id` from JWT claims.
 - Return plan, host limits, retention, created_at.
@@ -149,7 +149,7 @@ Test cases:
 - Authenticated user sees only own org data.
 - Unknown tenant claim returns 404/401 safely.
 
-### TASK-011: Implement agent key CRUD endpoints [BACKEND] [M]
+### TASK-011: Implement agent key CRUD endpoints [BACKEND] [M] [COMPLETED]
 - `GET /org/agent-keys`: return key id/prefix/label/created/last_used/revoked.
 - `POST /org/agent-keys`: generate raw key format `kl_live_{32chars}`, store hash + prefix, return raw once.
 - `DELETE /org/agent-keys/{id}`: set `revoked_at`.
@@ -160,7 +160,7 @@ Test cases:
 - Revoked key remains listed with `revoked_at` set.
 - Cross-tenant key deletion attempt fails.
 
-### TASK-012: Add Redis-backed key hash to tenant cache resolver [BACKEND] [M]
+### TASK-012: Add Redis-backed key hash to tenant cache resolver [BACKEND] [M] [COMPLETED]
 - Implement key resolution service: hash raw key via SHA-256.
 - Redis lookup first with TTL 300 seconds.
 - On cache miss query `app.agent_keys` (non-revoked), then populate cache.
@@ -170,6 +170,41 @@ Test cases:
 - First lookup hits Postgres then writes Redis.
 - Second lookup hits Redis only.
 - Revoked key resolution returns unauthorized.
+
+### Phase 3 Implementation Approach (Completed on May 29, 2026)
+- Added a dedicated organization router and protected all Phase 3 endpoints using `require_auth` so tenant context always comes from JWT claims.
+- Implemented `GET /org` with tenant-scoped lookup on `app.organizations` and safe `404` behavior when claim/org mismatch exists.
+- Implemented agent key lifecycle:
+- `GET /org/agent-keys` lists tenant keys only with metadata (`id`, `key_prefix`, `label`, `created_at`, `last_used_at`, `revoked_at`).
+- `POST /org/agent-keys` generates `kl_live_{32hex}` raw keys, stores only SHA-256 hash + prefix, and returns the raw key once in the creation response.
+- `DELETE /org/agent-keys/{id}` performs tenant-scoped soft revoke via `revoked_at`.
+- Added Redis REST backed resolver service in `app/services/key_resolver.py`:
+- Hash raw key to SHA-256.
+- Read-through cache key format `kernlog:keys:{key_hash}` with 300s TTL.
+- On miss, query non-revoked `app.agent_keys`, then populate Redis cache.
+
+### Postman Testing Collection (Current APIs)
+- Added importable collection: `postman/kernlog-backend.postman_collection.json`.
+- Added local environment file: `postman/kernlog-local.postman_environment.json`.
+- Included all currently implemented APIs:
+- `GET /health`
+- `POST /auth/register`
+- `POST /auth/login`
+- `POST /auth/refresh`
+- `POST /auth/logout`
+- `GET /me`
+- `GET /org`
+- `GET /org/agent-keys`
+- `POST /org/agent-keys`
+- `DELETE /org/agent-keys/{id}`
+
+### Future Step: Keep Postman JSON Updated
+- Whenever a new API endpoint is added/changed, update `postman/kernlog-backend.postman_collection.json` in the same PR.
+- Keep `postman/kernlog-local.postman_environment.json` in sync with new variables used by collection requests.
+- Add request body examples for all non-GET routes and required headers (especially `Authorization: Bearer {{accessToken}}`).
+- Add/update collection variables for any new dynamic values (`hostId`, `alertRuleId`, etc.).
+- Ensure endpoint grouping remains phase-aligned (`Auth`, `Organization`, `Agent`, `Alerts`, etc.) so testing flow stays predictable.
+- Validate import once in Postman before merging to avoid broken JSON/check-in mistakes.
 
 ---
 
