@@ -37,6 +37,13 @@ honcho start
 ## Make Targets
 - `make backend` - start FastAPI app
 - `make alerts` - start alert worker
-- `make migrate` - migration runner placeholder
-- `make seed` - seed runner placeholder
-- `make topics` - topic setup placeholder
+- `make migrate` - run Alembic migrations to head
+- `make seed` - seed dev org/user/agent key
+- `make topics` - run topic setup script
+
+## Neon Connectivity Note
+- The `Makefile` sets a default `PGHOSTADDR=98.85.120.174` to force IPv4 and avoid local IPv6 routing issues with Neon pooler hosts.
+- Override this any time, for example:
+  ```bash
+  PGHOSTADDR=<your-ipv4-address> make migrate
+  ```

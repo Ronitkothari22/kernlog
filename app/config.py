@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 
 
 REQUIRED_ENV_VARS = (
@@ -36,6 +37,10 @@ class AppSettings:
     cors_origin: str
 
 
+ACCESS_TOKEN_EXPIRE_MINUTES = 15
+REFRESH_TOKEN_EXPIRE_DAYS = 7
+
+
 def _required(name: str) -> str:
     value = os.getenv(name, "").strip()
     if not value:
@@ -46,6 +51,7 @@ def _required(name: str) -> str:
     return value
 
 
+@lru_cache(maxsize=1)
 def load_settings() -> AppSettings:
     """Load and validate required runtime settings."""
     missing = [name for name in REQUIRED_ENV_VARS if not os.getenv(name, "").strip()]

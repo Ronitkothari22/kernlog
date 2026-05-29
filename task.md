@@ -52,7 +52,7 @@ Test cases:
 ## Phase 1 — Database and Migration Foundation
 > Deliver Neon schemas/tables/indexes and idempotent migration workflow.
 
-### TASK-004: Configure Alembic for Neon and schema search path [BACKEND] [M]
+### TASK-004: Configure Alembic for Neon and schema search path [BACKEND] [M] [COMPLETED]
 - Initialize Alembic in repo.
 - Set `sqlalchemy.url` via `NEON_DATABASE_URL`.
 - Configure `search_path=app,metrics,public` in Alembic runtime settings.
@@ -62,7 +62,7 @@ Test cases:
 - `python scripts/migrate.py` runs against Neon without schema resolution errors.
 - `alembic current` outputs expected revision.
 
-### TASK-005: Create initial SQL migration for all schemas/tables/indexes [BACKEND] [L]
+### TASK-005: Create initial SQL migration for all schemas/tables/indexes [BACKEND] [L] [COMPLETED]
 - Add `migrations/001_initial.sql` with `CREATE SCHEMA IF NOT EXISTS app;` and `metrics`.
 - Create relational tables in `app`: `organizations`, `users`, `refresh_tokens`, `agent_keys`, `hosts`, `alert_rules`, `alerts`.
 - Create time-series/log tables in `metrics`: `metrics`, `logs`.
@@ -74,7 +74,7 @@ Test cases:
 - Second migration run is idempotent with no fatal DDL errors.
 - `SELECT * FROM information_schema.tables` shows tables in correct schemas.
 
-### TASK-006: Implement seed script for dev tenant/user/key [BACKEND] [M]
+### TASK-006: Implement seed script for dev tenant/user/key [BACKEND] [M] [COMPLETED]
 - Implement `scripts/seed.py` for org `test-org` and owner `dev@kernlog.io`.
 - Hash password `devpassword` with bcrypt.
 - Generate agent raw key `kl_live_*`, store SHA-256 hash + prefix.
@@ -90,7 +90,7 @@ Test cases:
 ## Phase 2 — Authentication Service
 > Deliver JWT auth and refresh-token rotation with tenant-scoped claims.
 
-### TASK-007: Implement auth models and token utilities [AUTH] [M]
+### TASK-007: Implement auth models and token utilities [AUTH] [M] [COMPLETED]
 - Add Pydantic schemas for register/login/refresh/logout payloads.
 - Implement JWT creation helpers with claims: `user_id`, `tenant_id`, `email`, `role`.
 - Access token expiry: 15 minutes; refresh: 7 days.
@@ -101,7 +101,7 @@ Test cases:
 - Expired token fails validation.
 - Refresh token hash differs from raw token.
 
-### TASK-008: Build auth endpoints `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout` [AUTH] [L]
+### TASK-008: Build auth endpoints `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout` [AUTH] [L] [COMPLETED]
 - `POST /auth/register`: create org + owner user, return access+refresh tokens.
 - `POST /auth/login`: validate email/password via bcrypt, issue new tokens.
 - `POST /auth/refresh`: rotate refresh token, revoke old token, issue new pair.
@@ -114,7 +114,7 @@ Test cases:
 - Refresh invalidates previous refresh token.
 - Logout prevents further refresh with same token.
 
-### TASK-009: Add `require_auth` dependency and route protection [AUTH] [M]
+### TASK-009: Add `require_auth` dependency and route protection [AUTH] [M] [COMPLETED]
 - Implement `require_auth` dependency in `app/deps/auth.py`.
 - Validate bearer token signature, expiration, and claims.
 - Return normalized auth context `{user_id, tenant_id, role}`.
@@ -124,6 +124,15 @@ Test cases:
 - Protected route without token returns 401.
 - Token from tenant A cannot access tenant B data.
 - Malformed JWT returns deterministic auth error.
+
+### Phase 1 & 2 Implementation Approach (Completed on May 29, 2026)
+- Used SQLAlchemy + Alembic with runtime env loading from `NEON_DATABASE_URL`, and enforced `search_path=app,metrics,public` both in Alembic runtime and app DB engine.
+- Kept schema provisioning idempotent via `IF NOT EXISTS` DDL in `migrations/001_initial.sql`, and wired Alembic revision to execute this SQL file directly for predictable Neon-compatible setup.
+- Implemented `scripts/migrate.py` as a real migration runner (`alembic upgrade head`) and replaced seed placeholder with an idempotent seeder for `test-org`, `dev@kernlog.io`, and one agent key.
+- Implemented auth using short-lived access JWT (15 min) + refresh JWT (7 days), with required claims (`user_id`, `tenant_id`, `email`, `role`) and token-type separation.
+- Implemented refresh-token rotation and revocation using SHA-256 token hashing in `app.refresh_tokens` so raw refresh tokens are never stored.
+- Added tenant-safe auth flow endpoints (`/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`) where tenant context is always derived from DB/user identity, not trusted from incoming payload.
+- Added `require_auth` dependency for bearer validation and normalized auth context output, and attached it to a protected route (`GET /me`) to enforce route-level protection.
 
 ---
 

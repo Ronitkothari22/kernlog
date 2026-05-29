@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
 from app.config import load_settings
+from app.deps.auth import require_auth
+from app.routers.auth import router as auth_router
 
 
 @asynccontextmanager
@@ -17,8 +19,14 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Kernlog Backend", lifespan=lifespan)
+app.include_router(auth_router)
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/me")
+def me(auth_ctx: dict = Depends(require_auth)) -> dict:
+    return auth_ctx
