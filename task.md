@@ -1,10 +1,10 @@
 # Kernlog SaaS — Implementation Task Plan
 
 ## Project Description
-Kernlog is a multi-tenant, real-time infrastructure monitoring SaaS. Users create an organization, generate agent API keys, install a Python agent on hosts, and view live metrics/logs/alerts in a Next.js dashboard. Data isolation by `tenant_id` is mandatory in every storage and query path. Stack is fully free-tier oriented: Neon PostgreSQL, Upstash Kafka, Upstash Redis, Render, and Vercel. No Docker is used for local development or runtime.
+Kernlog is a multi-tenant, real-time infrastructure monitoring SaaS. Users create an organization, generate agent API keys, install a Python agent on hosts, and view live metrics/logs/alerts in a Next.js dashboard. Data isolation by `tenant_id` is mandatory in every storage and query path. Stack is fully free-tier oriented: Neon PostgreSQL, Upstash QStash, Upstash Redis, Render, and Vercel. No Docker is used for local development or runtime.
 
 ## Scope and Build Order
-- Repo 1 first: `kernlog-backend` (FastAPI API + WebSocket + Kafka ingestion + alert engine + agent package).
+- Repo 1 first: `kernlog-backend` (FastAPI API + WebSocket + QStash ingestion + alert engine + agent package).
 - Repo 2 second: `kernlog-frontend` (Next.js dashboard and onboarding UI only after backend is stable and deployed).
 - Alerting is threshold-based only. No AI/ML.
 
@@ -12,8 +12,9 @@ Kernlog is a multi-tenant, real-time infrastructure monitoring SaaS. Users creat
 
 ## Phase 0 — Local Development Setup (Backend First)
 > Deliver a runnable backend workspace with native process workflow and cloud-managed dependencies.
+> Comment: Phase 0 is completed in this repository.
 
-### TASK-001: Create backend repository skeleton [INFRA] [M]
+### TASK-001: Create backend repository skeleton [INFRA] [M] [COMPLETED]
 - Create directories: `app/`, `alert_engine/`, `agent/`, `scripts/`, `migrations/`.
 - Add base files: `requirements.txt`, `agent/requirements.txt`, `.env.example`, `Makefile`, `Procfile`, `README.md`.
 - Add package markers and minimal module files: `app/__init__.py`, `app/main.py`, `alert_engine/__init__.py`, `alert_engine/main.py`.
@@ -25,8 +26,8 @@ Test cases:
 - `python -m py_compile app/main.py alert_engine/main.py` passes.
 - README includes setup steps and backend-first note.
 
-### TASK-002: Define backend environment contract [DEVOPS] [S]
-- Add all required vars to `.env.example`: `NEON_DATABASE_URL`, `UPSTASH_KAFKA_REST_URL`, `UPSTASH_KAFKA_REST_USERNAME`, `UPSTASH_KAFKA_REST_PASSWORD`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `PORT`, `ENVIRONMENT`, `CORS_ORIGIN`.
+### TASK-002: Define backend environment contract [DEVOPS] [S] [COMPLETED]
+- Add all required vars to `.env.example`: `NEON_DATABASE_URL`, `UPSTASH_QSTASH_URL`, `UPSTASH_QSTASH_TOKEN`, `UPSTASH_QSTASH_CURRENT_SIGNING_KEY`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `PORT`, `ENVIRONMENT`, `CORS_ORIGIN`.
 - Add inline comments for each variable purpose and format.
 - Add startup validation utility in `app/config.py`.
 - Fail-fast app boot if required vars are missing.
@@ -36,7 +37,7 @@ Test cases:
 - Start app with all vars present succeeds.
 - `.env.example` contains every required key exactly once.
 
-### TASK-003: Add local process commands [DEVOPS] [S]
+### TASK-003: Add local process commands [DEVOPS] [S] [COMPLETED]
 - Add Makefile commands: `backend`, `alerts`, `migrate`, `seed`, `topics`.
 - Configure `Procfile` with `web` and `worker` process definitions.
 - Ensure commands use project-relative module paths.
@@ -177,7 +178,7 @@ Test cases:
 - `kernlog-agent --help` prints CLI usage.
 
 ### TASK-014: Build config loader for `/etc/kernlog/config.yaml` [AGENT] [M]
-- Parse fields: `agent_key`, Upstash Kafka creds/url, `host_id`, `host_label`, `log_file_paths`, `collection_interval_seconds`.
+- Parse fields: `agent_key`, Upstash QStash creds/url, `host_id`, `host_label`, `log_file_paths`, `collection_interval_seconds`.
 - Default `host_id` to hostname and interval to 15.
 - Validate required fields and readable log paths.
 - Add clear startup error messages.
@@ -218,9 +219,9 @@ Test cases:
 - Appended log line appears as single produced event.
 - File rotation continues ingestion without duplicate flood.
 
-### TASK-018: Implement Upstash Kafka producer wrapper with retries [AGENT] [M]
-- Use `upstash-kafka` REST-based producer client.
-- Configure from `UPSTASH_KAFKA_REST_URL`, `...USERNAME`, `...PASSWORD`.
+### TASK-018: Implement Upstash QStash producer wrapper with retries [AGENT] [M]
+- Use `QStash` REST-based producer client.
+- Configure from `UPSTASH_QSTASH_URL`, `UPSTASH_QSTASH_TOKEN`, `UPSTASH_QSTASH_CURRENT_SIGNING_KEY`.
 - Add exponential backoff for HTTP errors.
 - Return structured success/failure stats for observability.
 
@@ -267,12 +268,12 @@ Test cases:
 
 ---
 
-## Phase 6 — Kafka Consumer and Ingestion Pipeline
+## Phase 6 — QStash Consumer and Ingestion Pipeline
 > Deliver background ingestion task in FastAPI process with Redis fanout and Neon persistence.
 
-### TASK-022: Start Kafka consumer as FastAPI background task [BACKEND] [L]
-- Initialize consumer(s) for `metrics.system`, `metrics.api`, `logs.app` at app startup.
-- Use Upstash Kafka REST credentials from env.
+### TASK-022: Start QStash consumer as FastAPI background task [BACKEND] [L]
+- Initialize QStash receiver/subscription handler(s) for `metrics.system`, `metrics.api`, `logs.app` at app startup.
+- Use Upstash QStash REST credentials from env.
 - Run consumer loop in asyncio task group.
 - Ensure clean shutdown on app stop.
 
@@ -547,7 +548,7 @@ Test cases:
 > Deliver reproducible local workflows and debugging support without Docker.
 
 ### TASK-046: Finalize backend process/dev scripts [DEVOPS] [M]
-- Ensure `scripts/create_topics.py` creates required Upstash Kafka topics.
+- Ensure `scripts/create_topics.py` (or equivalent setup script) creates required Upstash QStash routes/subscriptions.
 - Ensure `scripts/migrate.py` and `scripts/seed.py` are robust and logged.
 - Add VS Code `.vscode/launch.json` for FastAPI, alert engine, and agent debugging.
 - Validate Procfile/honcho startup path.
@@ -592,7 +593,7 @@ Test cases:
 - Health endpoint returns 200 quickly.
 
 ### TASK-050: Add agent buffering and replay fallback [AGENT] [L]
-- On repeated Kafka publish failures (max 5 retries), persist payloads to local SQLite queue.
+- On repeated QStash publish failures (max 5 retries), persist payloads to local SQLite queue.
 - Replay queued payloads on reconnect in order.
 - Add cap/rotation policy for local buffer size.
 - Log drop policy if queue is full.
@@ -614,7 +615,7 @@ Test cases:
 ### TASK-052: Finalize documentation set [DEVOPS] [M]
 - Expand root READMEs with architecture, setup, deployment, env vars, and install guide.
 - Include free-tier caveats and scaling notes.
-- Add troubleshooting for auth, Kafka, Redis, and Render sleep behavior.
+- Add troubleshooting for auth, QStash, Redis, and Render sleep behavior.
 - Add sequence diagrams (text/mermaid) for ingestion and alert flow.
 
 Test cases:
@@ -636,9 +637,9 @@ Test cases:
 - Production DB reachable from backend.
 - Migration history matches expected head.
 
-### TASK-054: Deploy and configure Upstash Kafka + Redis [INFRA] [M]
-- Create topics: `metrics.system`, `metrics.api`, `logs.app`.
-- Configure REST creds for backend, worker, and agent template.
+### TASK-054: Deploy and configure Upstash QStash + Redis [INFRA] [M]
+- Create QStash routes/subscriptions for `metrics.system`, `metrics.api`, `logs.app`.
+- Configure QStash creds for backend, worker, and agent template.
 - Configure Redis REST creds and verify key/channel operations.
 - Validate regional alignment with Neon.
 

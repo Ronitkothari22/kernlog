@@ -8,9 +8,9 @@ from dataclasses import dataclass
 
 REQUIRED_ENV_VARS = (
     "NEON_DATABASE_URL",
-    "UPSTASH_KAFKA_REST_URL",
-    "UPSTASH_KAFKA_REST_USERNAME",
-    "UPSTASH_KAFKA_REST_PASSWORD",
+    "UPSTASH_QSTASH_URL",
+    "UPSTASH_QSTASH_TOKEN",
+    "UPSTASH_QSTASH_CURRENT_SIGNING_KEY",
     "UPSTASH_REDIS_REST_URL",
     "UPSTASH_REDIS_REST_TOKEN",
     "JWT_SECRET",
@@ -24,9 +24,9 @@ REQUIRED_ENV_VARS = (
 @dataclass(frozen=True)
 class AppSettings:
     neon_database_url: str
-    upstash_kafka_rest_url: str
-    upstash_kafka_rest_username: str
-    upstash_kafka_rest_password: str
+    upstash_qstash_url: str
+    upstash_qstash_token: str
+    upstash_qstash_current_signing_key: str
     upstash_redis_rest_url: str
     upstash_redis_rest_token: str
     jwt_secret: str
@@ -58,9 +58,9 @@ def load_settings() -> AppSettings:
 
     return AppSettings(
         neon_database_url=_required("NEON_DATABASE_URL"),
-        upstash_kafka_rest_url=_required("UPSTASH_KAFKA_REST_URL"),
-        upstash_kafka_rest_username=_required("UPSTASH_KAFKA_REST_USERNAME"),
-        upstash_kafka_rest_password=_required("UPSTASH_KAFKA_REST_PASSWORD"),
+        upstash_qstash_url=_required("UPSTASH_QSTASH_URL"),
+        upstash_qstash_token=_required("UPSTASH_QSTASH_TOKEN"),
+        upstash_qstash_current_signing_key=_required("UPSTASH_QSTASH_CURRENT_SIGNING_KEY"),
         upstash_redis_rest_url=_required("UPSTASH_REDIS_REST_URL"),
         upstash_redis_rest_token=_required("UPSTASH_REDIS_REST_TOKEN"),
         jwt_secret=_required("JWT_SECRET"),

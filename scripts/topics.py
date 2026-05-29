@@ -1,4 +1,4 @@
-"""Kafka topic setup placeholder for Phase 0."""
+"""QStash route/queue setup placeholder for Phase 0."""
 
 from __future__ import annotations
 
