@@ -334,7 +334,7 @@ Test cases:
 ## Phase 6 — QStash Consumer and Ingestion Pipeline
 > Deliver background ingestion task in FastAPI process with Redis fanout and Neon persistence.
 
-### TASK-022: Start QStash consumer as FastAPI background task [BACKEND] [L]
+### TASK-022: Start QStash consumer as FastAPI background task [BACKEND] [L] [COMPLETED]
 - Initialize QStash receiver/subscription handler(s) for `metrics.system`, `metrics.api`, `logs.app` at app startup.
 - Use Upstash QStash REST credentials from env.
 - Run consumer loop in asyncio task group.
@@ -344,7 +344,7 @@ Test cases:
 - App startup launches consumer task.
 - App shutdown cancels consumer without unhandled exceptions.
 
-### TASK-023: Implement message parsing/validation and tenant enforcement [BACKEND] [M]
+### TASK-023: Implement message parsing/validation and tenant enforcement [BACKEND] [M] [COMPLETED]
 - Parse JSON payload and require top-level `tenant_id`, `host_id`.
 - Reject malformed messages with structured logs.
 - Verify tenant/host consistency before DB writes.
@@ -354,7 +354,7 @@ Test cases:
 - Malformed JSON does not crash consumer loop.
 - Missing tenant_id message is rejected and logged.
 
-### TASK-024: Persist metrics and update Redis latest snapshot [BACKEND] [L]
+### TASK-024: Persist metrics and update Redis latest snapshot [BACKEND] [L] [COMPLETED]
 - Insert metric points into `metrics.metrics` via asyncpg.
 - Update `{tenant_id}:{host_id}:latest` hash with TTL 60s.
 - Publish live metric update to `kernlog:{tenant_id}:{host_id}` channel.
@@ -365,7 +365,7 @@ Test cases:
 - Redis latest key is refreshed and expires as expected.
 - Pub/sub message appears on tenant+host channel.
 
-### TASK-025: Persist logs, infer severity, and publish live log stream [BACKEND] [M]
+### TASK-025: Persist logs, infer severity, and publish live log stream [BACKEND] [M] [COMPLETED]
 - Insert log lines into `metrics.logs`.
 - Parse severity via regex (`ERROR|WARN|INFO|DEBUG`).
 - Publish log event to `kernlog:{tenant_id}:{host_id}:logs`.
@@ -375,7 +375,7 @@ Test cases:
 - Log line containing `ERROR` is stored with severity `ERROR`.
 - Log stream subscribers receive near-real-time events.
 
-### TASK-026: Commit consumer offsets after successful writes [BACKEND] [M]
+### TASK-026: Commit consumer offsets after successful writes [BACKEND] [M] [COMPLETED]
 - Commit offsets only after DB + Redis operations succeed.
 - Retry transient failures before abandoning message.
 - Keep at-least-once semantics explicit in docs.
@@ -384,6 +384,34 @@ Test cases:
 Test cases:
 - Forced DB failure prevents offset commit.
 - Restarted consumer reprocesses uncommitted message.
+
+### Phase 6 Implementation Approach (Completed on May 30, 2026)
+- Added a dedicated ingestion pipeline in `app/ingestion.py` with:
+- Topic-aware parsing/validation for `metrics.system`, `metrics.api`, and `logs.app`.
+- Background worker queue (`IngestionWorker`) started in FastAPI lifespan and stopped cleanly on shutdown.
+- Retry handling (bounded retries for transient failures) and at-least-once behavior by returning non-2xx on failures.
+- Added webhook endpoint `POST /api/v1/ingest/qstash` in `app/routers/ingestion.py`:
+- Validates QStash publisher authorization token.
+- Parses payload and only acknowledges after successful worker processing.
+- Implemented tenant/host enforcement before writes by validating `(tenant_id, host_id)` against `app.hosts`.
+- Implemented metrics ingestion:
+- Insert into `metrics.metrics`.
+- Refresh Redis latest snapshot key `{tenant_id}:{host_id}:latest` with TTL 60s.
+- Publish live metric event to Redis channel `kernlog:{tenant_id}:{host_id}`.
+- Debounced host heartbeat updates via Redis key `{tenant_id}:{host_id}:lastseen` (30s gate).
+- Implemented logs ingestion:
+- Insert into `metrics.logs` with severity inference (`ERROR|WARN|INFO|DEBUG`, fallback `INFO`).
+- Publish live log event to `kernlog:{tenant_id}:{host_id}:logs`.
+- Added idempotency guard for message re-delivery using Redis key `kernlog:ingest:processed:{message_id}`.
+- Added migration `20260530_01_add_logs_severity.py` to introduce `metrics.logs.severity`.
+
+### Phase 6 Test Execution Status (May 30, 2026)
+- `venv/bin/python -m unittest discover -s tests -p 'test_phase6_ingestion.py'`:
+- PASS (4/4) for malformed JSON rejection, required `tenant_id` validation, valid message parse, and severity inference fallback/regex behavior.
+- `python3 -m py_compile app/main.py app/ingestion.py app/routers/ingestion.py alembic/versions/20260530_01_add_logs_severity.py`:
+- PASS (syntax check successful).
+- Integration tests requiring live Neon/Redis/QStash connectivity:
+- NOT EXECUTED in this run (no end-to-end cloud dependency exercise in local test step).
 
 ---
 

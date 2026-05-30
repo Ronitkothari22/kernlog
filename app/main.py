@@ -10,6 +10,8 @@ from app.config import load_settings
 from app.deps.auth import require_auth
 from app.routers.agent import router as agent_router
 from app.routers.auth import router as auth_router
+from app.routers.ingestion import router as ingestion_router
+from app.routers.ingestion import worker as ingestion_worker
 from app.routers.org import router as org_router
 
 
@@ -17,13 +19,18 @@ from app.routers.org import router as org_router
 async def lifespan(_: FastAPI):
     # Fail-fast on startup if required configuration is missing.
     load_settings()
-    yield
+    ingestion_worker.start()
+    try:
+        yield
+    finally:
+        await ingestion_worker.stop()
 
 
 app = FastAPI(title="Kernlog Backend", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(org_router)
 app.include_router(agent_router)
+app.include_router(ingestion_router)
 
 
 @app.get("/health")
