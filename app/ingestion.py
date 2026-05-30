@@ -279,6 +279,18 @@ def _ingest_metric(db, message: IngestMessage) -> None:
             "ts": parsed_ts.isoformat(),
         },
     )
+    _redis_publish(
+        message.topic,
+        {
+            "type": "metric",
+            "tenant_id": payload["tenant_id"],
+            "host_id": payload["host_id"],
+            "metric_name": metric_name,
+            "metric_value": float(metric_value),
+            "labels": labels,
+            "ts": parsed_ts.isoformat(),
+        },
+    )
 
 
 def _ingest_log(db, message: IngestMessage) -> None:

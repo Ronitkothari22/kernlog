@@ -3,18 +3,23 @@
 from __future__ import annotations
 
 import base64
+import asyncio
 import json
+import logging
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib import error, parse, request
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.config import load_settings
 from app.db import get_db
+from app.db import SessionLocal
 from app.deps.auth import require_auth
+from app.security import decode_access_token
 from app.schemas.monitoring import (
     AlertItemResponse,
     AlertRuleCreateRequest,
@@ -30,6 +35,7 @@ from app.schemas.monitoring import (
 )
 
 router = APIRouter(prefix="/api/v1", tags=["monitoring"])
+LOGGER = logging.getLogger("kernlog.ws")
 
 INTERVAL_BUCKETS: dict[str, str] = {
     "1m": "date_trunc('minute', ts)",
@@ -130,6 +136,164 @@ def _publish_rule_invalidation(tenant_id: str) -> None:
         request.urlopen(req, timeout=3).read()
     except error.URLError:
         return
+    _redis_set(f"kernlog:{tenant_id}:alert_rules:version", str(int(time.time())))
+
+
+def _redis_set(cache_key: str, value: str) -> None:
+    settings = load_settings()
+    encoded_key = parse.quote(cache_key, safe="")
+    encoded_value = parse.quote(value, safe="")
+    url = settings.upstash_redis_rest_url.rstrip("/") + f"/set/{encoded_key}/{encoded_value}"
+    req = request.Request(url, method="POST")
+    req.add_header("Authorization", f"Bearer {settings.upstash_redis_rest_token}")
+    req.add_header("Content-Type", "application/json")
+    try:
+        request.urlopen(req, timeout=3).read()
+    except error.URLError:
+        return
+
+
+def _redis_subscribe_once(channel: str) -> list[dict[str, Any]]:
+    settings = load_settings()
+    encoded_channel = parse.quote(channel, safe="")
+    url = settings.upstash_redis_rest_url.rstrip("/") + f"/subscribe/{encoded_channel}"
+    req = request.Request(url, method="GET")
+    req.add_header("Authorization", f"Bearer {settings.upstash_redis_rest_token}")
+    req.add_header("Accept", "text/event-stream")
+
+    try:
+        with request.urlopen(req, timeout=35) as resp:
+            body = resp.read().decode("utf-8")
+    except (TimeoutError, error.URLError):
+        return []
+
+    events: list[dict[str, Any]] = []
+    for line in body.splitlines():
+        if not line.startswith("data:"):
+            continue
+        payload_raw = line.removeprefix("data:").strip()
+        try:
+            payload = json.loads(payload_raw)
+        except json.JSONDecodeError:
+            continue
+        message = payload.get("message")
+        if isinstance(message, str):
+            try:
+                parsed = json.loads(message)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                events.append(parsed)
+    return events
+
+
+def _decode_ws_token(token: str) -> dict[str, Any]:
+    try:
+        return decode_access_token(token)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid websocket token") from exc
+
+
+def _require_ws_host_in_tenant(tenant_id: str, host_id: str) -> None:
+    with SessionLocal() as db:
+        row = db.execute(
+            text(
+                """
+                SELECT 1
+                FROM app.hosts
+                WHERE tenant_id = :tenant_id AND host_id = :host_id
+                """
+            ),
+            {"tenant_id": tenant_id, "host_id": host_id},
+        ).first()
+        if not row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Host not found")
+
+
+class WsBridgeManager:
+    def __init__(self) -> None:
+        self._clients: dict[str, set[WebSocket]] = {}
+        self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._lock = asyncio.Lock()
+
+    async def register(self, tenant_id: str, host_id: str, websocket: WebSocket) -> None:
+        key = f"{tenant_id}:{host_id}"
+        async with self._lock:
+            clients = self._clients.setdefault(key, set())
+            clients.add(websocket)
+            if key not in self._tasks:
+                self._tasks[key] = asyncio.create_task(self._relay_loop(tenant_id, host_id), name=f"ws-relay-{key}")
+
+    async def unregister(self, tenant_id: str, host_id: str, websocket: WebSocket) -> None:
+        key = f"{tenant_id}:{host_id}"
+        async with self._lock:
+            clients = self._clients.get(key, set())
+            clients.discard(websocket)
+            if not clients:
+                self._clients.pop(key, None)
+                task = self._tasks.pop(key, None)
+                if task:
+                    task.cancel()
+
+    async def _relay_loop(self, tenant_id: str, host_id: str) -> None:
+        key = f"{tenant_id}:{host_id}"
+        channels = [f"kernlog:{tenant_id}:{host_id}", f"kernlog:{tenant_id}:{host_id}:logs"]
+        try:
+            while True:
+                for channel in channels:
+                    events = await asyncio.to_thread(_redis_subscribe_once, channel)
+                    if not events:
+                        continue
+                    await self._broadcast(key, events)
+                await asyncio.sleep(0.05)
+        except asyncio.CancelledError:
+            return
+        except Exception:  # noqa: BLE001
+            LOGGER.exception("WebSocket relay loop crashed for %s", key)
+
+    async def _broadcast(self, key: str, events: list[dict[str, Any]]) -> None:
+        clients = self._clients.get(key, set()).copy()
+        for payload in events:
+            dead_clients: list[WebSocket] = []
+            for ws in clients:
+                try:
+                    await ws.send_json(payload)
+                except Exception:  # noqa: BLE001
+                    dead_clients.append(ws)
+            if dead_clients:
+                async with self._lock:
+                    current = self._clients.get(key, set())
+                    for ws in dead_clients:
+                        current.discard(ws)
+
+
+ws_bridge_manager = WsBridgeManager()
+
+
+@router.websocket("/ws/{host_id}")
+async def host_ws(websocket: WebSocket, host_id: str) -> None:
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=4401, reason="Missing token")
+        return
+
+    try:
+        auth_payload = _decode_ws_token(token)
+        tenant_id = str(auth_payload["tenant_id"])
+        _require_ws_host_in_tenant(tenant_id, host_id)
+    except HTTPException as exc:
+        await websocket.close(code=4403 if exc.status_code != status.HTTP_404_NOT_FOUND else 4404, reason=exc.detail)
+        return
+
+    await websocket.accept()
+    await ws_bridge_manager.register(tenant_id, host_id, websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await ws_bridge_manager.unregister(tenant_id, host_id, websocket)
 
 
 @router.get("/hosts", response_model=HostListResponse)

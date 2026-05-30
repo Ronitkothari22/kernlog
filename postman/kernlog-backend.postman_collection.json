@@ -15,7 +15,8 @@
     { "key": "alertRuleId", "value": "" },
     { "key": "logsCursor", "value": "" },
     { "key": "metricsFrom", "value": "2026-05-30T00:00:00Z" },
-    { "key": "metricsTo", "value": "2026-05-30T23:59:59Z" }
+    { "key": "metricsTo", "value": "2026-05-30T23:59:59Z" },
+    { "key": "wsUrl", "value": "ws://localhost:8000" }
   ],
   "item": [
     {
@@ -247,6 +248,18 @@
             "method": "DELETE",
             "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
             "url": "{{baseUrl}}/api/v1/alert-rules/{{alertRuleId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "WebSocket",
+      "item": [
+        {
+          "name": "WS /api/v1/ws/:hostId",
+          "request": {
+            "method": "GET",
+            "url": "{{wsUrl}}/api/v1/ws/{{hostId}}?token={{accessToken}}"
           }
         }
       ]

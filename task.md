@@ -508,7 +508,7 @@ Test cases:
 ## Phase 8 — WebSocket Live Stream
 > Deliver tenant-isolated real-time metrics/log stream per host.
 
-### TASK-031: Implement WebSocket endpoint `/api/v1/ws/{host_id}` [BACKEND] [M]
+### TASK-031: Implement WebSocket endpoint `/api/v1/ws/{host_id}` [BACKEND] [M] [COMPLETED]
 - Accept JWT token via query param `?token=`.
 - Validate token and extract `tenant_id`.
 - Verify host ownership in `app.hosts` before subscription.
@@ -518,7 +518,7 @@ Test cases:
 - Valid token+host opens connection.
 - Token from other tenant cannot subscribe.
 
-### TASK-032: Bridge Redis pub/sub to WebSocket clients [BACKEND] [L]
+### TASK-032: Bridge Redis pub/sub to WebSocket clients [BACKEND] [L] [COMPLETED]
 - Subscribe to `kernlog:{tenant_id}:{host_id}` and `...:logs` channels.
 - Forward payloads as JSON messages with event type fields.
 - Track multiple clients per host concurrently.
@@ -533,7 +533,7 @@ Test cases:
 ## Phase 9 — Alert Engine (Separate Worker)
 > Deliver independent worker process for threshold alert evaluation lifecycle.
 
-### TASK-033: Build alert engine consumer service [ALERT] [L]
+### TASK-033: Build alert engine consumer service [ALERT] [L] [COMPLETED]
 - Implement standalone `alert_engine/main.py` process.
 - Consume `metrics.system` and `metrics.api` with group `kernlog-alerts`.
 - Parse payload and route to evaluation service.
@@ -543,7 +543,7 @@ Test cases:
 - Worker starts independently of FastAPI process.
 - Sample metric message reaches evaluator.
 
-### TASK-034: Implement alert rule cache and invalidation [ALERT] [M]
+### TASK-034: Implement alert rule cache and invalidation [ALERT] [M] [COMPLETED]
 - Load matching rules by `(tenant_id, host_id OR global)`.
 - Cache rules in-memory with 30s TTL.
 - Invalidate cache on CRUD event signal.
@@ -553,7 +553,7 @@ Test cases:
 - Rule update becomes effective after invalidation.
 - Disabled rules are never evaluated.
 
-### TASK-035: Implement breach streak tracking and fire/resolve transitions [ALERT] [L]
+### TASK-035: Implement breach streak tracking and fire/resolve transitions [ALERT] [L] [COMPLETED]
 - Store streak counters in Redis key `alert_streak:{tenant_id}:{host_id}:{metric}`.
 - Increment on breach, reset on recovery.
 - Fire alert when streak >= `consecutive` and no active alert exists.
@@ -564,6 +564,36 @@ Test cases:
 - Breach below threshold count does not fire.
 - Crossing consecutive count creates firing alert.
 - Recovery marks alert resolved and sets `resolved_at`.
+
+### Phase 8 & 9 Implementation Approach (Completed on May 30, 2026)
+- Added tenant-scoped WebSocket route `GET /api/v1/ws/{host_id}?token=...` in `app/routers/monitoring.py` with JWT validation via `decode_access_token`, host ownership verification against `app.hosts`, and deterministic close handling for unauthorized/missing-token clients.
+- Implemented `WsBridgeManager` to track concurrent clients per `tenant_id:host_id`, fan out identical messages to all clients, and clean relay task/subscriber state on disconnect.
+- Added Redis pub/sub bridge hooks using Upstash REST subscribe calls for host channels:
+- `kernlog:{tenant_id}:{host_id}`
+- `kernlog:{tenant_id}:{host_id}:logs`
+- Extended ingestion metric publishing so each metric write also publishes the normalized payload to channel `metrics.system` or `metrics.api` (based on ingest topic), enabling a decoupled alert worker consumer path.
+- Replaced alert worker placeholder with a real `alert_engine/main.py` service loop that consumes `metrics.system` and `metrics.api`, parses metric events, and routes them to evaluation.
+- Implemented alert rule cache (`RuleCache`) with 30s in-memory TTL and Redis version-key invalidation (`kernlog:{tenant_id}:alert_rules:version`) set on alert-rule CRUD mutation publish path.
+- Implemented streak-based threshold lifecycle in `AlertEvaluator`:
+- Redis streak key format `alert_streak:{tenant_id}:{host_id}:{rule_id}`
+- Increment/reset behavior on breach/recovery
+- Fire-on-consecutive when no open alert exists
+- Resolve-on-recovery with `resolved_at` timestamp
+- Publish fired/resolved alert events to `kernlog:{tenant_id}:alerts`.
+- Added migration `20260530_03_phase9_alert_rules_consecutive.py` to add `app.alert_rules.consecutive` with default `3` for explicit streak threshold configuration.
+
+### Phase 8 & 9 Test Execution Status (May 30, 2026)
+- `./venv/bin/python -m unittest discover -s tests -v`:
+- PASS (11/11): existing Phase 6/7 tests + new Phase 8 WebSocket manager tests + new Phase 9 alert engine evaluation tests.
+- `./venv/bin/python -m py_compile app/routers/monitoring.py app/ingestion.py alert_engine/main.py alembic/versions/20260530_03_phase9_alert_rules_consecutive.py tests/test_phase8_websocket.py tests/test_phase9_alert_engine.py`:
+- PASS (syntax check successful).
+- `./venv/bin/python -m json.tool postman/kernlog-backend.postman_collection.json`:
+- PASS (valid Postman collection JSON).
+
+### Phase 8 & 9 Postman Coverage Update
+- Updated `postman/kernlog-backend.postman_collection.json` with a WebSocket test request:
+- `WS /api/v1/ws/:hostId?token=:accessToken`
+- Added collection variable `wsUrl` (`ws://localhost:8000`) for websocket testing in local/dev flows.
 
 ---
 
