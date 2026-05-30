@@ -2,7 +2,7 @@
   "info": {
     "name": "Kernlog Backend API",
     "_postman_id": "a9cb0868-3c84-4c82-86a5-a5d510f33ac6",
-    "description": "Auth + organization + agent key + agent registration APIs implemented till Phase 5.",
+    "description": "Auth, organization, agent registration, ingestion, and Phase 7 monitoring APIs.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -11,7 +11,11 @@
     { "key": "refreshToken", "value": "" },
     { "key": "agentKeyId", "value": "" },
     { "key": "agentKey", "value": "" },
-    { "key": "hostId", "value": "dev-host-01" }
+    { "key": "hostId", "value": "dev-host-01" },
+    { "key": "alertRuleId", "value": "" },
+    { "key": "logsCursor", "value": "" },
+    { "key": "metricsFrom", "value": "2026-05-30T00:00:00Z" },
+    { "key": "metricsTo", "value": "2026-05-30T23:59:59Z" }
   ],
   "item": [
     {
@@ -152,6 +156,97 @@
               "raw": "{\n  \"host_id\": \"{{hostId}}\",\n  \"label\": \"api-node-01\",\n  \"os\": \"linux\",\n  \"arch\": \"x86_64\",\n  \"agent_version\": \"0.1.0\"\n}"
             },
             "url": "{{baseUrl}}/api/v1/agent/register"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Monitoring",
+      "item": [
+        {
+          "name": "GET /api/v1/hosts",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/v1/hosts?page=1&page_size=20"
+          }
+        },
+        {
+          "name": "GET /api/v1/hosts/:hostId",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/v1/hosts/{{hostId}}"
+          }
+        },
+        {
+          "name": "GET /api/v1/hosts/:hostId/metrics",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/v1/hosts/{{hostId}}/metrics?metric=cpu_usage&from={{metricsFrom}}&to={{metricsTo}}&interval=1m"
+          }
+        },
+        {
+          "name": "GET /api/v1/hosts/:hostId/logs",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/v1/hosts/{{hostId}}/logs?severity=ERROR&limit=50"
+          }
+        },
+        {
+          "name": "GET /api/v1/alerts",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/v1/alerts?status=open&host_id={{hostId}}&limit=50"
+          }
+        },
+        {
+          "name": "GET /api/v1/alert-rules",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/v1/alert-rules"
+          }
+        },
+        {
+          "name": "POST /api/v1/alert-rules",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"CPU High\",\n  \"metric_name\": \"cpu_usage\",\n  \"operator\": \"gt\",\n  \"threshold\": 85,\n  \"severity\": \"warning\",\n  \"host_id\": \"{{hostId}}\",\n  \"enabled\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/alert-rules"
+          }
+        },
+        {
+          "name": "PUT /api/v1/alert-rules/:id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"CPU High Critical\",\n  \"metric_name\": \"cpu_usage\",\n  \"operator\": \"gt\",\n  \"threshold\": 92,\n  \"severity\": \"critical\",\n  \"host_id\": \"{{hostId}}\",\n  \"enabled\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/alert-rules/{{alertRuleId}}"
+          }
+        },
+        {
+          "name": "DELETE /api/v1/alert-rules/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/api/v1/alert-rules/{{alertRuleId}}"
           }
         }
       ]

@@ -418,7 +418,7 @@ Test cases:
 ## Phase 7 — Backend REST API
 > Deliver tenant-scoped host, metrics, logs, alerts, and alert-rule endpoints.
 
-### TASK-027: Implement host listing/detail endpoints [BACKEND] [M]
+### TASK-027: Implement host listing/detail endpoints [BACKEND] [M] [COMPLETED]
 - `GET /api/v1/hosts` returns tenant hosts with `last_seen_at` and Redis latest snapshot.
 - `GET /api/v1/hosts/{host_id}` returns single host + latest stats.
 - Derive tenant from JWT only.
@@ -428,7 +428,7 @@ Test cases:
 - Host list excludes other tenants.
 - Missing host in tenant returns 404.
 
-### TASK-028: Implement metrics query endpoint with PostgreSQL rollups [BACKEND] [L]
+### TASK-028: Implement metrics query endpoint with PostgreSQL rollups [BACKEND] [L] [COMPLETED]
 - `GET /api/v1/hosts/{host_id}/metrics` with `metric`, `from`, `to`, `interval`.
 - Use plain PostgreSQL aggregation with `date_trunc`/bucket strategy (no TimescaleDB).
 - Support intervals `1m`, `5m`, `1h`.
@@ -439,7 +439,7 @@ Test cases:
 - Unsupported interval returns 400.
 - Query cannot access other tenant’s host data.
 
-### TASK-029: Implement logs and alerts feed endpoints [BACKEND] [M]
+### TASK-029: Implement logs and alerts feed endpoints [BACKEND] [M] [COMPLETED]
 - `GET /api/v1/hosts/{host_id}/logs` with `search`, `severity`, `limit`, pagination cursor.
 - `GET /api/v1/alerts` with filters `status`, `host_id`, `limit`.
 - Add indexes-aware query plans.
@@ -449,7 +449,7 @@ Test cases:
 - Severity filter returns only requested level.
 - Alert query by host returns tenant-local results only.
 
-### TASK-030: Implement alert rules CRUD endpoints [BACKEND] [M]
+### TASK-030: Implement alert rules CRUD endpoints [BACKEND] [M] [COMPLETED]
 - `GET /api/v1/alert-rules`, `POST`, `PUT`, `DELETE`.
 - Validate operator enum `gt|lt|gte|lte` and severity enum.
 - Allow optional `host_id` null for org-wide rules.
@@ -459,6 +459,49 @@ Test cases:
 - Creating invalid operator returns 422/400.
 - Rule updates are visible immediately to API reads.
 - Deleting rule prevents future evaluations after cache refresh.
+
+### Phase 7 Implementation Approach (Completed on May 30, 2026)
+- Added a new tenant-protected monitoring router at `app/routers/monitoring.py` mounted under `/api/v1` for hosts, metrics, logs, alerts, and alert-rules.
+- Implemented strict tenant scoping in every read/write path using `require_auth` context and tenant-constrained SQL predicates.
+- Added host APIs:
+- `GET /api/v1/hosts` with basic pagination (`page`, `page_size`) and last-seen ordering.
+- `GET /api/v1/hosts/{host_id}` with tenant-safe 404 behavior.
+- Added latest snapshot enrichment for host responses via Redis key `{tenant_id}:{host_id}:latest` (written during ingestion).
+- Added metrics API with rollups:
+- `GET /api/v1/hosts/{host_id}/metrics?metric=&from=&to=&interval=`.
+- Supported intervals `1m`, `5m`, `1h` using PostgreSQL bucket expressions (`date_trunc` and 5-minute epoch bucketing).
+- Added range validation (`to > from`) and maximum query window cap (7 days).
+- Added logs and alerts feeds:
+- `GET /api/v1/hosts/{host_id}/logs` supports `search`, `severity`, `limit`, cursor-based pagination via opaque cursor.
+- `GET /api/v1/alerts` supports `status`, `host_id`, and `limit` with tenant-only filtering.
+- Added alert rules CRUD:
+- `GET/POST/PUT/DELETE /api/v1/alert-rules`.
+- Operator and severity are validated by schema enums; host-specific rules are tenant-validated while `host_id` remains optional for org-wide rules.
+- On rule writes, publishes cache invalidation signal to Redis channel `kernlog:{tenant_id}:alert_rules`.
+- Added migration `20260530_02_phase7_alert_rules_and_indexes.py`:
+- Adds `operator`, `severity`, and nullable `host_id` columns to `app.alert_rules` (backfills `operator` from legacy `comparator`).
+- Adds query indexes for hosts, metrics, logs, alerts, and alert-rules list/read paths.
+
+### Phase 7 Test Execution Status (May 30, 2026)
+- `./venv/bin/python -m unittest discover -s tests -v`:
+- PASS (6/6): existing Phase 6 ingestion tests + new Phase 7 cursor pagination tests.
+- `python -m py_compile app/main.py app/routers/monitoring.py app/schemas/monitoring.py alembic/versions/20260530_02_phase7_alert_rules_and_indexes.py tests/test_phase7_monitoring.py`:
+- PASS (syntax check successful).
+- `python -m json.tool postman/kernlog-backend.postman_collection.json`:
+- PASS (valid Postman collection JSON).
+
+### Phase 7 Postman Coverage Update
+- Updated `postman/kernlog-backend.postman_collection.json` with new `Monitoring` folder and request examples for:
+- `GET /api/v1/hosts`
+- `GET /api/v1/hosts/{{hostId}}`
+- `GET /api/v1/hosts/{{hostId}}/metrics`
+- `GET /api/v1/hosts/{{hostId}}/logs`
+- `GET /api/v1/alerts`
+- `GET /api/v1/alert-rules`
+- `POST /api/v1/alert-rules`
+- `PUT /api/v1/alert-rules/{{alertRuleId}}`
+- `DELETE /api/v1/alert-rules/{{alertRuleId}}`
+- Added collection variables for `alertRuleId`, `logsCursor`, `metricsFrom`, and `metricsTo`.
 
 ---
 

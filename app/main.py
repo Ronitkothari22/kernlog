@@ -12,6 +12,7 @@ from app.routers.agent import router as agent_router
 from app.routers.auth import router as auth_router
 from app.routers.ingestion import router as ingestion_router
 from app.routers.ingestion import worker as ingestion_worker
+from app.routers.monitoring import router as monitoring_router
 from app.routers.org import router as org_router
 
 
@@ -31,6 +32,7 @@ app.include_router(auth_router)
 app.include_router(org_router)
 app.include_router(agent_router)
 app.include_router(ingestion_router)
+app.include_router(monitoring_router)
 
 
 @app.get("/health")
