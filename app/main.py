@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import load_settings
 from app.deps.auth import require_auth
@@ -28,6 +29,14 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Kernlog Backend", lifespan=lifespan)
+settings = load_settings()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.cors_origin],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(auth_router)
 app.include_router(org_router)
 app.include_router(agent_router)
